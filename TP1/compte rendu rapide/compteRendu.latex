@@ -1,0 +1,502 @@
+\documentclass[12pt, a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[french]{babel}
+\usepackage{geometry}
+\geometry{a4paper, margin=2.2cm}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{fancyhdr}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    urlcolor=blue
+}
+
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{INSAT -- GL4/RT4}
+\rhead{Systèmes Temps-Réel -- TP1}
+\cfoot{\thepage}
+
+% ---------- Style du code C ----------
+\lstset{
+    language=C,
+    basicstyle=\ttfamily\footnotesize,
+    keywordstyle=\color{blue}\bfseries,
+    stringstyle=\color{red},
+    commentstyle=\color{green!50!black},
+    numbers=left,
+    numberstyle=\tiny\color{gray},
+    numbersep=8pt,
+    backgroundcolor=\color{gray!8},
+    frame=single,
+    rulecolor=\color{black!30},
+    breaklines=true,
+    tabsize=4,
+    showstringspaces=false,
+    captionpos=b
+}
+
+% Style pour les sorties console
+\lstdefinestyle{console}{
+    language={},
+    numbers=none,
+    backgroundcolor=\color{black!5},
+    basicstyle=\ttfamily\footnotesize,
+    frame=single
+}
+
+% ---------- Page de titre ----------
+\title{
+    \vspace{-1cm}
+    \textbf{INSAT -- GL4 / RT4}\\[0.4cm]
+    \Large Systèmes Temps-Réel (STR)\\[0.8cm]
+    \huge \textbf{Compte Rendu : TP1}\\[0.2cm]
+    \Large Le Pont en POSIX
+}
+
+\author{
+    \textbf{Réalisé par (Groupe GL4) :}\\[0.3cm]
+    Slama Amr\\
+    Ben Yarou Adem\\
+    Djebbi Mohamed Nadhir\\
+    Ayed AbdelHakim\\[0.6cm]
+    \textbf{Enseignante :} Olfa Mosbahi
+}
+
+\date{\today}
+
+\begin{document}
+
+\maketitle
+\thispagestyle{empty}
+
+\vfill
+\begin{center}
+    \textbf{Dépôt GitHub du projet :}\\
+    \url{https://github.com/AmrDroid-git/TP-STR-GL4}
+\end{center}
+
+\newpage
+\tableofcontents
+\newpage
+
+% ==========================================================
+\section{Introduction}
+% ==========================================================
+Ce compte rendu présente la résolution du TP1 « Le Pont en POSIX ». Un pont supporte une charge maximale de \textbf{15 tonnes}. Il est traversé par des \textbf{camions} de 15 tonnes et par des \textbf{voitures} de 5 tonnes. Il faut gérer l'accès au pont de sorte que la charge maximale ne soit jamais dépassée.
+
+Chaque véhicule est modélisé par un \textbf{thread POSIX} (\texttt{pthread}). Le pont est modélisé par un \textbf{moniteur}, c'est-à-dire une structure de données partagée protégée par un mutex et dotée de variables de condition. Il expose deux opérations : une fonction d'acquisition (\texttt{pont\_acceder}) et une fonction de libération (\texttt{pont\_liberer}).
+
+Le travail comporte deux parties :
+\begin{enumerate}
+    \item \textbf{Question 1} : un moniteur simple qui respecte uniquement la capacité du pont.
+    \item \textbf{Question 2} : une extension qui donne la \textbf{priorité aux camions} lorsqu'un camion et une voiture sont en attente.
+\end{enumerate}
+
+\textbf{Environnement :} langage C, bibliothèque \texttt{pthread}, compilation avec \texttt{gcc}.
+
+% ==========================================================
+\section{Organisation du projet}
+% ==========================================================
+Le projet est divisé en deux dossiers, un par question :
+
+\begin{lstlisting}[style=console]
+TP1/
+|-- Q1/
+|   |-- pont.h       (interface du moniteur - sans priorite)
+|   |-- voiture.h    (arguments + prototype du thread voiture)
+|   |-- camion.h     (arguments + prototype du thread camion)
+|   `-- main.c       (implementation + programme principal)
+`-- Q2/
+    |-- pont.h       (interface du moniteur - avec priorite)
+    |-- voiture.h
+    |-- camion.h
+    `-- main.c
+\end{lstlisting}
+
+\begin{itemize}
+    \item \textbf{\texttt{pont.h}} : définit la structure \texttt{Pont} (charge courante, mutex, variables de condition, compteurs) et les prototypes \texttt{pont\_init}, \texttt{pont\_destroy}, \texttt{pont\_acceder} et \texttt{pont\_liberer}.
+    \item \textbf{\texttt{voiture.h}} et \textbf{\texttt{camion.h}} : définissent la structure des arguments passés aux threads et le prototype des routines \texttt{runner\_voiture} et \texttt{runner\_camion}.
+    \item \textbf{\texttt{main.c}} : contient l'implémentation du moniteur, les routines des threads et la fonction \texttt{main} qui crée les véhicules.
+\end{itemize}
+
+% ==========================================================
+\section{Question 1 : Moniteur de base (sans priorité)}
+% ==========================================================
+
+\subsection{Principe de la solution}
+Le pont est une ressource partagée dont l'état est la variable \texttt{chargeActuelle}. La solution repose sur trois éléments :
+
+\begin{enumerate}
+    \item \textbf{Exclusion mutuelle} : un mutex (\texttt{pthread\_mutex\_t}) protège toutes les lectures et écritures de \texttt{chargeActuelle}. Sans lui, deux threads pourraient tester la condition en même temps et dépasser ensemble les 15 tonnes.
+    \item \textbf{Condition de blocage} : une variable de condition (\texttt{pthread\_cond\_t}) endort les véhicules tant que l'entrée dépasserait la capacité, c'est-à-dire tant que \texttt{chargeActuelle + poids > 15}. \texttt{pthread\_cond\_wait} libère atomiquement le mutex pendant l'attente, puis le reprend au réveil.
+    \item \textbf{Réveil à la libération} : quand un véhicule quitte le pont, il diminue la charge puis appelle \texttt{pthread\_cond\_broadcast} pour réveiller tous les threads en attente, qui revérifient la condition.
+\end{enumerate}
+
+L'attente est écrite dans une boucle \texttt{while} et non dans un \texttt{if}. Ainsi, un réveil intempestif (\textit{spurious wakeup}) ou un autre thread qui prend la place avant nous obligent à retester la condition avant d'entrer.
+
+\subsection{Interface : \texttt{pont.h}}
+\begin{lstlisting}
+#ifndef PONT_H
+#define PONT_H
+
+#include <pthread.h>
+
+#define CHARGE_MAX 15
+
+typedef struct {
+    int chargeActuelle;
+    pthread_mutex_t mutex;
+    pthread_cond_t cond;
+} Pont;
+
+void pont_init(Pont *pont);
+void pont_destroy(Pont *pont);
+void pont_acceder(Pont *pont, int poids, const char *nomVehicule);
+void pont_liberer(Pont *pont, int poids, const char *nomVehicule);
+
+#endif
+\end{lstlisting}
+
+\subsection{Interfaces des threads : \texttt{voiture.h} et \texttt{camion.h}}
+\begin{lstlisting}
+/* voiture.h */
+#ifndef VOITURE_H
+#define VOITURE_H
+#include "pont.h"
+
+typedef struct {
+    char nom[50];
+    Pont *pont;
+} VoitureArgs;
+
+void *runner_voiture(void *arg);
+#endif
+\end{lstlisting}
+
+\begin{lstlisting}
+/* camion.h */
+#ifndef CAMION_H
+#define CAMION_H
+#include "pont.h"
+
+typedef struct {
+    char nom[50];
+    Pont *pont;
+} CamionArgs;
+
+void *runner_camion(void *arg);
+#endif
+\end{lstlisting}
+
+\subsection{Implémentation du moniteur}
+\begin{lstlisting}
+void pont_init(Pont *pont) {
+    pont->chargeActuelle = 0;
+    pthread_mutex_init(&pont->mutex, NULL);
+    pthread_cond_init(&pont->cond, NULL);
+}
+
+void pont_destroy(Pont *pont) {
+    pthread_mutex_destroy(&pont->mutex);
+    pthread_cond_destroy(&pont->cond);
+}
+
+/* Fonction d'acquisition */
+void pont_acceder(Pont *pont, int poids, const char *nomVehicule) {
+    pthread_mutex_lock(&pont->mutex);
+
+    /* Attendre tant que la capacite serait depassee */
+    while (pont->chargeActuelle + poids > CHARGE_MAX) {
+        pthread_cond_wait(&pont->cond, &pont->mutex);
+    }
+
+    pont->chargeActuelle += poids;
+    printf("%s (%dt) est entre. Charge actuelle : %dt\n",
+           nomVehicule, poids, pont->chargeActuelle);
+
+    pthread_mutex_unlock(&pont->mutex);
+}
+
+/* Fonction de liberation */
+void pont_liberer(Pont *pont, int poids, const char *nomVehicule) {
+    pthread_mutex_lock(&pont->mutex);
+
+    pont->chargeActuelle -= poids;
+    printf("%s (%dt) est sorti. Charge actuelle : %dt\n",
+           nomVehicule, poids, pont->chargeActuelle);
+
+    /* Reveiller tous les vehicules en attente */
+    pthread_cond_broadcast(&pont->cond);
+
+    pthread_mutex_unlock(&pont->mutex);
+}
+\end{lstlisting}
+
+\subsection{Threads véhicules et programme principal}
+Chaque thread appelle \texttt{pont\_acceder}, simule la traversée avec \texttt{sleep} (1\,s pour une voiture, 2\,s pour un camion), puis appelle \texttt{pont\_liberer}. La mémoire des arguments, allouée par \texttt{malloc} dans \texttt{main}, est libérée par le thread lui-même.
+
+\begin{lstlisting}
+typedef struct {
+    char nom[50];
+    Pont *pont;
+} VehiculeArgs;
+
+void *runner_voiture(void *arg) {
+    VehiculeArgs *args = (VehiculeArgs *)arg;
+    pont_acceder(args->pont, 5, args->nom);
+    sleep(1);                         /* traversee : 1 s */
+    pont_liberer(args->pont, 5, args->nom);
+    free(args);
+    return NULL;
+}
+
+void *runner_camion(void *arg) {
+    VehiculeArgs *args = (VehiculeArgs *)arg;
+    pont_acceder(args->pont, 15, args->nom);
+    sleep(2);                         /* traversee : 2 s */
+    pont_liberer(args->pont, 15, args->nom);
+    free(args);
+    return NULL;
+}
+
+int main() {
+    Pont pont;
+    pont_init(&pont);
+
+    pthread_t t_v1, t_v2, t_c1, t_v3;
+
+    VehiculeArgs *v1 = malloc(sizeof(VehiculeArgs));
+    strcpy(v1->nom, "Voiture 1"); v1->pont = &pont;
+    VehiculeArgs *v2 = malloc(sizeof(VehiculeArgs));
+    strcpy(v2->nom, "Voiture 2"); v2->pont = &pont;
+    VehiculeArgs *c1 = malloc(sizeof(VehiculeArgs));
+    strcpy(c1->nom, "Camion 1");  c1->pont = &pont;
+    VehiculeArgs *v3 = malloc(sizeof(VehiculeArgs));
+    strcpy(v3->nom, "Voiture 3"); v3->pont = &pont;
+
+    pthread_create(&t_v1, NULL, runner_voiture, v1);
+    pthread_create(&t_v2, NULL, runner_voiture, v2);
+    pthread_create(&t_c1, NULL, runner_camion,  c1);
+    pthread_create(&t_v3, NULL, runner_voiture, v3);
+
+    pthread_join(t_v1, NULL);
+    pthread_join(t_v2, NULL);
+    pthread_join(t_c1, NULL);
+    pthread_join(t_v3, NULL);
+
+    pont_destroy(&pont);
+    return 0;
+}
+\end{lstlisting}
+
+\subsection{Compilation et exécution}
+\begin{lstlisting}[style=console]
+$ cd Q1
+$ gcc main.c -o main -pthread
+$ ./main
+\end{lstlisting}
+
+\subsection{Résultat obtenu}
+\begin{lstlisting}[style=console]
+Voiture 1 (5t) est entre. Charge actuelle : 5t
+Voiture 2 (5t) est entre. Charge actuelle : 10t
+Voiture 3 (5t) est entre. Charge actuelle : 15t
+Voiture 1 (5t) est sorti. Charge actuelle : 10t
+Voiture 3 (5t) est sorti. Charge actuelle : 5t
+Voiture 2 (5t) est sorti. Charge actuelle : 0t
+Camion 1 (15t) est entre. Charge actuelle : 15t
+Camion 1 (15t) est sorti. Charge actuelle : 0t
+\end{lstlisting}
+
+\subsection{Analyse}
+\begin{itemize}
+    \item La charge ne dépasse \textbf{jamais 15\,t} : les trois voitures (5\,t chacune) sont acceptées ensemble et atteignent exactement la capacité.
+    \item Le \textbf{Camion 1} (15\,t) reste bloqué tant que le pont n'est pas \textbf{complètement vide}. Il n'entre qu'après la sortie de la dernière voiture (charge $= 0$\,t).
+    \item Le camion est passé en dernier alors qu'il était en attente. Sans règle de priorité, des voitures arrivant en continu peuvent l'empêcher d'entrer (\textbf{risque de famine}). C'est ce que la Question 2 corrige.
+\end{itemize}
+
+\newpage
+% ==========================================================
+\section{Question 2 : Priorité aux camions}
+% ==========================================================
+
+\subsection{Principe et modifications}
+On veut qu'un camion en attente soit servi avant les voitures en attente, sous réserve du respect de la capacité du pont. Quatre modifications sont apportées à la structure \texttt{Pont} et aux fonctions :
+
+\begin{itemize}
+    \item \textbf{Deux files d'attente distinctes} : deux variables de condition, \texttt{cond\_camion} et \texttt{cond\_voiture}, permettent de réveiller sélectivement les camions ou les voitures.
+    \item \textbf{Deux compteurs} : \texttt{nbCamionsEnAttente} et \texttt{nbVoituresEnAttente} indiquent combien de véhicules de chaque type sont bloqués.
+    \item \textbf{Règle d'accès} : une voiture ne peut entrer que si la capacité le permet \textbf{et} si aucun camion n'est en attente (\texttt{nbCamionsEnAttente == 0}). Un camion n'est conditionné que par la capacité, donc par un pont vide.
+    \item \textbf{Règle de réveil à la libération} : si un camion attend et que le pont est vide (charge $= 0$), on réveille le camion avec \texttt{pthread\_cond\_signal(\&cond\_camion)}. Sinon, on réveille les voitures avec \texttt{pthread\_cond\_broadcast(\&cond\_voiture)}.
+\end{itemize}
+
+\subsection{Interface : \texttt{pont.h} (version priorité)}
+\begin{lstlisting}
+#ifndef PONT_H
+#define PONT_H
+
+#include <pthread.h>
+
+#define CHARGE_MAX 15
+
+typedef struct {
+    int chargeActuelle;
+    int nbCamionsEnAttente;      /* camions bloques */
+    int nbVoituresEnAttente;     /* voitures bloquees */
+    pthread_mutex_t mutex;
+    pthread_cond_t cond_camion;  /* file prioritaire des camions */
+    pthread_cond_t cond_voiture; /* file des voitures */
+} Pont;
+
+void pont_init(Pont *pont);
+void pont_destroy(Pont *pont);
+void pont_acceder(Pont *pont, int poids, const char *nomVehicule);
+void pont_liberer(Pont *pont, int poids, const char *nomVehicule);
+
+#endif
+\end{lstlisting}
+
+Les fichiers \texttt{voiture.h} et \texttt{camion.h} sont identiques à ceux de la Question 1.
+
+\subsection{Implémentation du moniteur avec priorité}
+\begin{lstlisting}
+void pont_init(Pont *pont) {
+    pont->chargeActuelle = 0;
+    pont->nbCamionsEnAttente = 0;
+    pont->nbVoituresEnAttente = 0;
+    pthread_mutex_init(&pont->mutex, NULL);
+    pthread_cond_init(&pont->cond_camion, NULL);
+    pthread_cond_init(&pont->cond_voiture, NULL);
+}
+
+void pont_destroy(Pont *pont) {
+    pthread_mutex_destroy(&pont->mutex);
+    pthread_cond_destroy(&pont->cond_camion);
+    pthread_cond_destroy(&pont->cond_voiture);
+}
+
+void pont_acceder(Pont *pont, int poids, const char *nomVehicule) {
+    pthread_mutex_lock(&pont->mutex);
+
+    if (poids == 15) {
+        /* ----- CAMION ----- */
+        pont->nbCamionsEnAttente++;
+
+        /* Attend tant que le pont n'est pas completement vide */
+        while (pont->chargeActuelle + poids > CHARGE_MAX) {
+            pthread_cond_wait(&pont->cond_camion, &pont->mutex);
+        }
+        pont->nbCamionsEnAttente--;
+    } else {
+        /* ----- VOITURE ----- */
+        pont->nbVoituresEnAttente++;
+
+        /* Attend si le pont est plein OU si un camion attend */
+        while ((pont->chargeActuelle + poids > CHARGE_MAX)
+               || (pont->nbCamionsEnAttente > 0)) {
+            pthread_cond_wait(&pont->cond_voiture, &pont->mutex);
+        }
+        pont->nbVoituresEnAttente--;
+    }
+
+    pont->chargeActuelle += poids;
+    printf("[ENTREE] %s (%dt) est entre. Charge actuelle : %dt\n",
+           nomVehicule, poids, pont->chargeActuelle);
+
+    pthread_mutex_unlock(&pont->mutex);
+}
+
+void pont_liberer(Pont *pont, int poids, const char *nomVehicule) {
+    pthread_mutex_lock(&pont->mutex);
+
+    pont->chargeActuelle -= poids;
+    printf("[SORTIE] %s (%dt) est sorti. Charge actuelle : %dt\n",
+           nomVehicule, poids, pont->chargeActuelle);
+
+    if (pont->nbCamionsEnAttente > 0 && pont->chargeActuelle == 0) {
+        /* Pont vide et camion en attente : priorite au camion */
+        pthread_cond_signal(&pont->cond_camion);
+    } else {
+        /* Sinon on reveille les voitures */
+        pthread_cond_broadcast(&pont->cond_voiture);
+    }
+
+    pthread_mutex_unlock(&pont->mutex);
+}
+\end{lstlisting}
+
+Les routines \texttt{runner\_voiture}, \texttt{runner\_camion} et la fonction \texttt{main} sont identiques à celles de la Question 1 : mêmes quatre threads (3 voitures et 1 camion) et mêmes durées de traversée.
+
+\subsection{Compilation et exécution}
+\begin{lstlisting}[style=console]
+$ cd Q2
+$ gcc main.c -o main -pthread
+$ ./main
+\end{lstlisting}
+
+\subsection{Résultat obtenu}
+\begin{lstlisting}[style=console]
+[ENTREE] Voiture 1 (5t) est entre. Charge actuelle : 5t
+[ENTREE] Voiture 2 (5t) est entre. Charge actuelle : 10t
+[SORTIE] Voiture 2 (5t) est sorti. Charge actuelle : 5t
+[SORTIE] Voiture 1 (5t) est sorti. Charge actuelle : 0t
+[ENTREE] Camion 1 (15t) est entre. Charge actuelle : 15t
+[SORTIE] Camion 1 (15t) est sorti. Charge actuelle : 0t
+[ENTREE] Voiture 3 (5t) est entre. Charge actuelle : 5t
+[SORTIE] Voiture 3 (5t) est sorti. Charge actuelle : 0t
+\end{lstlisting}
+
+\subsection{Analyse}
+Cette exécution illustre bien la priorité. Après l'entrée des Voitures 1 et 2 (charge 10\,t), le Camion 1 arrive et se bloque. À partir de ce moment :
+\begin{itemize}
+    \item la \textbf{Voiture 3}, qui aurait pu entrer (10 + 5 = 15\,t), \textbf{est bloquée} car \texttt{nbCamionsEnAttente > 0} ;
+    \item dès que le pont est vide (0\,t), le camion est réveillé et entre \textbf{avant} la Voiture 3 ;
+    \item la Voiture 3 ne passe qu'après la sortie du camion.
+\end{itemize}
+
+Comparaison avec la Question 1 :
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{@{}lcc@{}}
+\toprule
+ & \textbf{Question 1} & \textbf{Question 2} \\
+\midrule
+Capacité de 15\,t respectée & Oui & Oui \\
+Exclusion mutuelle (mutex) & Oui & Oui \\
+Variables de condition & 1 & 2 \\
+Priorité aux camions & Non & Oui \\
+Risque de famine des camions & Oui & Non \\
+Risque de famine des voitures & Non & Possible \\
+\bottomrule
+\end{tabular}
+\caption{Comparaison des deux solutions}
+\end{table}
+
+\textbf{Remarque :} l'ordre d'exécution dépend de l'ordonnanceur du système. Les traces peuvent donc varier d'une exécution à l'autre, selon l'ordre dans lequel les threads obtiennent le mutex. Dans tous les cas, deux propriétés restent vraies : la charge ne dépasse jamais 15\,t, et aucune voiture n'entre pendant qu'un camion attend.
+
+% ==========================================================
+\section{Justification de la correction}
+% ==========================================================
+\begin{itemize}
+    \item \textbf{Sûreté (capacité)} : \texttt{chargeActuelle} n'est modifiée que sous le mutex, et uniquement après avoir vérifié \texttt{chargeActuelle + poids $\le$ 15}. L'invariant $0 \le \text{charge} \le 15$ est donc toujours vrai.
+    \item \textbf{Absence d'interblocage} : une libération réveille toujours les threads concernés. Le seul véhicule qui bloque les autres est celui qui est sur le pont, et il finit toujours par sortir.
+    \item \textbf{Absence de réveil perdu} : tous les changements d'état (\texttt{chargeActuelle}) sont suivis d'un \texttt{signal} ou \texttt{broadcast} sous mutex, et les conditions sont testées dans des boucles \texttt{while}.
+    \item \textbf{Priorité} : les voitures testent \texttt{nbCamionsEnAttente > 0} avant d'entrer, et le camion est réveillé en premier lorsque le pont est vide.
+\end{itemize}
+
+% ==========================================================
+\section{Conclusion}
+% ==========================================================
+Ce TP nous a permis de mettre en pratique la synchronisation de threads avec POSIX : exclusion mutuelle par mutex, attente conditionnelle avec \texttt{pthread\_cond\_wait}, et réveil sélectif avec \texttt{signal} et \texttt{broadcast}. La première solution garantit le respect de la capacité du pont, mais peut faire attendre indéfiniment les camions. La seconde ajoute des files d'attente séparées et des compteurs d'attente, ce qui donne la priorité aux camions sans violer la contrainte de charge. Elle accepte en contrepartie une possible attente prolongée des voitures. Une amélioration possible serait d'ajouter une règle d'équité, par exemple un quota de camions consécutifs, pour éviter la famine des voitures.
+
+\end{document}
+\end{document}
