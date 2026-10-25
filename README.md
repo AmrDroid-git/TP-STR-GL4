@@ -80,7 +80,7 @@ gcc main.c -o main -pthread
 ./main | grep "segment AB"   # verifier l'exclusion sur un segment
 ```
 
-Compte rendu complet : [`TP2/compte_rendu.pdf`](TP2/compte_rendu.pdf).
+Compte rendu complet .
 
 ---
 
