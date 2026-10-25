@@ -49,7 +49,7 @@ gcc main.c -o main -pthread
 ./main
 ```
 
-Compte rendu complet : [`TP1/compte_rendu.pdf`](TP1/compte_rendu.pdf).
+Compte rendu complet.
 
 ---
 
