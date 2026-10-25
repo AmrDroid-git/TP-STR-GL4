@@ -1,0 +1,93 @@
+$ ./main.exe | grep "segment AB"
+MR1-1 attend le segment AB     <- MR1-1 demande AB
+MR1-1 occupe le segment AB     <- AB est libre, MR1-1 entre
+MR1-2 attend le segment AB     <- MR1-2 veut AB mais MR1-1 est dedans : il ATTEND
+MR1-1 libere le segment AB     <- MR1-1 sort, AB est de nouveau libre
+MR1-2 occupe le segment AB     <- MR1-2 peut enfin entrer
+MR2-1 attend le segment AB     <- MR2-1 arrive, MR1-2 est dedans : il ATTEND
+MR1-2 libere le segment AB     <- MR1-2 sort
+MR2-2 attend le segment AB     <- MR2-2 demande AB (AB est libre a cet instant)
+MR2-2 occupe le segment AB     <- MR2-2 entre
+MR2-2 libere le segment AB     <- MR2-2 sort
+MR2-1 occupe le segment AB     <- MR2-1 entre enfin
+MR2-1 libere le segment AB     <- MR2-1 sort
+
+
+
+$ ./main.exe | grep "segment BC"
+MR3-1 attend le segment BC     <- MR3-1 demande BC
+MR3-1 occupe le segment BC     <- BC est libre, MR3-1 entre
+MR1-1 attend le segment BC     <- MR1-1 veut BC mais MR3-1 est dedans : il ATTEND
+MR3-1 libere le segment BC     <- MR3-1 sort
+MR1-2 attend le segment BC     <- MR1-2 demande BC
+MR1-2 occupe le segment BC     <- MR1-2 entre
+MR3-2 attend le segment BC     <- MR3-2 arrive, MR1-2 est dedans : il ATTEND
+MR1-2 libere le segment BC     <- MR1-2 sort
+MR3-2 occupe le segment BC     <- MR3-2 entre
+MR3-2 libere le segment BC     <- MR3-2 sort
+MR1-1 occupe le segment BC     <- MR1-1 entre
+MR1-1 libere le segment BC     <- MR1-1 sort
+
+
+
+
+$ ./main.exe 
+[ 0.01s] MR1-1 attend le segment AB
+[ 0.01s] MR1-1 occupe le segment AB
+[ 0.01s] MR1-2 attend le segment AB
+[ 0.01s] MR2-1 attend le segment BF
+[ 0.01s] MR2-1 occupe le segment BF
+[ 0.01s] MR2-2 attend le segment BF
+[ 0.01s] MR3-1 attend le segment EC
+[ 0.01s] MR3-1 occupe le segment EC
+[ 0.01s] MR3-2 attend le segment EC
+[ 2.01s] MR1-1 libere le segment AB
+[ 2.01s] MR2-1 libere le segment BF
+[ 2.01s] MR1-2 occupe le segment AB
+[ 2.01s] MR2-1 attend le segment AB
+[ 2.01s] MR1-1 attend le segment BC
+[ 2.01s] MR1-1 occupe le segment BC
+[ 2.01s] MR2-2 occupe le segment BF
+[ 2.03s] MR3-1 libere le segment EC
+[ 2.03s] MR3-2 occupe le segment EC
+[ 2.03s] MR3-1 attend le segment BC
+[ 4.02s] MR1-1 libere le segment BC
+[ 4.02s] MR1-1 attend le segment CD
+[ 4.02s] MR3-1 occupe le segment BC
+[ 4.02s] MR1-2 libere le segment AB
+[ 4.02s] MR1-2 attend le segment BC
+[ 4.02s] MR2-1 occupe le segment AB
+[ 4.02s] MR1-1 occupe le segment CD
+[ 4.02s] MR2-2 libere le segment BF
+[ 4.02s] MR2-2 attend le segment AB
+[ 4.03s] MR3-2 libere le segment EC
+[ 4.03s] MR3-2 attend le segment BC
+[ 6.02s] MR3-1 libere le segment BC
+[ 6.02s] MR2-1 libere le segment AB
+[ 6.02s] MR1-1 libere le segment CD
+[ 6.02s] MR2-2 occupe le segment AB
+[ 6.02s] MR1-2 occupe le segment BC
+[ 8.02s] MR2-2 libere le segment AB
+[ 8.02s] MR1-2 libere le segment BC
+[ 8.02s] MR1-2 attend le segment CD
+[ 8.02s] MR1-2 occupe le segment CD
+[ 8.02s] MR3-2 occupe le segment BC
+[10.03s] MR1-2 libere le segment CD
+[10.03s] MR3-2 libere le segment BC
+
+
+
+
+$ ./main.exe | grep "segment AB"
+[ 0.00s] MR1-1 attend le segment AB
+[ 0.00s] MR1-1 occupe le segment AB
+[ 0.00s] MR1-2 attend le segment AB
+[ 2.00s] MR1-1 libere le segment AB
+[ 2.00s] MR1-2 occupe le segment AB
+[ 2.02s] MR2-1 attend le segment AB
+[ 4.00s] MR1-2 libere le segment AB
+[ 4.00s] MR2-1 occupe le segment AB
+[ 4.02s] MR2-2 attend le segment AB
+[ 6.01s] MR2-1 libere le segment AB
+[ 6.01s] MR2-2 occupe le segment AB
+[ 8.02s] MR2-2 libere le segment AB
